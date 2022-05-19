@@ -417,10 +417,10 @@ namespace KurotoriTools
                 if (
                     type == typeof(AimConstraint) ||
                     type == typeof(LookAtConstraint) ||
-                    type == typeof(ParentConstraintRemapper) ||
-                    type == typeof(PositionConstraintRemapper) ||
-                    type == typeof(RotationConstraintRemapper) ||
-                    type == typeof(ScaleConstraintRemapper) ||
+                    type == typeof(ParentConstraint) ||
+                    type == typeof(PositionConstraint) ||
+                    type == typeof(RotationConstraint) ||
+                    type == typeof(ScaleConstraint) ||
 #if VRC_SDK_VRCSDK3
                     type == typeof(VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBone) ||
                     type == typeof(VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider) ||
@@ -519,7 +519,7 @@ namespace KurotoriTools
 
                 ClearRemapper();
 
-                List<SkinnedMeshRenderer> newAssembledMeshList;
+                List<System.Tuple<SkinnedMeshRenderer, string>> newAssembledMeshList;
                 CopyMesh(assembledAvatar, parts, assembledInfo,partsInfo, out newAssembledMeshList);
 
                 // Anchor Overideの書き換え
@@ -623,13 +623,13 @@ namespace KurotoriTools
             }
         }
 
-        private void CopyMesh(GameObject assembledObject, GameObject parts, BonePathInfo assembledInfo, BonePathInfo partsInfo, out List<SkinnedMeshRenderer> newAssembledMeshList)
+        private void CopyMesh(GameObject assembledObject, GameObject parts, BonePathInfo assembledInfo, BonePathInfo partsInfo, out List<System.Tuple<SkinnedMeshRenderer, string>> newAssembledMeshList)
         {
             KurotoriUtility.OutputLog(LogType.LOG, "メッシュデータの結合開始");
 
             var partsMeshs = parts.GetComponentsInChildren<SkinnedMeshRenderer>();
 
-            newAssembledMeshList = new List<SkinnedMeshRenderer>();
+            newAssembledMeshList = new List<System.Tuple<SkinnedMeshRenderer, string>>();
 
             foreach(var mesh in partsMeshs)
             {
@@ -691,31 +691,43 @@ namespace KurotoriTools
                     ClothComponentRemapping(cloth, assembledInfo.pathList, partsInfo.rootBone);
                 }
 
-                newAssembledMeshList.Add(assembledSkinMesh);
+                // AnchorOverrideのパス情報を取得する
+                string probeAnchorPath = null;
+                if (mesh.probeAnchor != null)
+                {
+                    probeAnchorPath = KurotoriUtility.GetBonePath(parts.transform, mesh.probeAnchor);
+
+                    // 最初のオブジェクト名は無視する
+                    probeAnchorPath = probeAnchorPath.Substring(1);
+
+                    var parentIndex = probeAnchorPath.IndexOf('/');
+                    probeAnchorPath = probeAnchorPath.Substring(parentIndex);
+                }
+
+
+                newAssembledMeshList.Add(new System.Tuple<SkinnedMeshRenderer, string>(assembledSkinMesh, probeAnchorPath));
             }
         }
 
-        private void AnchorOverrideRemapping(GameObject assembledObject, List<SkinnedMeshRenderer> newAssembledMeshList)
+        private void AnchorOverrideRemapping(GameObject assembledObject, List<System.Tuple<SkinnedMeshRenderer, string>> newAssembledMeshList)
         {
             BonePathList pathList;
             KurotoriUtility.CreateBonePathList(assembledObject.transform, out pathList);
 
             foreach(var mesh in newAssembledMeshList)
             {
-                var anchor = mesh.probeAnchor;
+                if (mesh.Item2 == null) continue;
 
-                if (anchor == null) continue;
+                var targetPath = "/" + assembledObject.name + mesh.Item2;
 
-
-                var targetPath = KurotoriUtility.GetBonePath(assembledObject.transform, anchor);
                 Transform targetBone;
                 bool existTargetBone = pathList.TryGetValue(targetPath, out targetBone);
                 if(!existTargetBone)
                 {
-                    KurotoriUtility.OutputLog(LogType.WARNING, string.Format("メッシュ:{0} のprobeAncher: {1}が見つかりませんでした。見た目が正しくない可能性があります。", mesh.name, targetPath));
+                    KurotoriUtility.OutputLog(LogType.WARNING, string.Format("メッシュ:{0} のprobeAncher: {1}が見つかりませんでした。見た目が正しくない可能性があります。", mesh.Item1.name, targetPath));
                 }
 
-                mesh.probeAnchor = targetBone;
+                mesh.Item1.probeAnchor = targetBone;
             }
         }
 
