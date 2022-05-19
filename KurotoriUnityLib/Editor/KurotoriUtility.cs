@@ -377,6 +377,21 @@ namespace KurotoriTools
             }
         }
 
+        public static AnimationCurve CopyAnimationCurve(AnimationCurve curve)
+        {
+            var newCurve = new AnimationCurve();
+
+            foreach(var key in curve.keys)
+            {
+                newCurve.AddKey(key);
+            }
+
+            newCurve.postWrapMode = curve.postWrapMode;
+            newCurve.preWrapMode = curve.preWrapMode;
+
+            return newCurve;
+        }
+
         public static void GUITitle(string title)
         {
             EditorGUILayout.Space();

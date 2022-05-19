@@ -4,6 +4,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Animations;
 
+#if VRC_SDK_VRCSDK3
+
+using VRC.SDK3.Dynamics.PhysBone.Components;
+using VRC.SDK3.Dynamics.Contact.Components;
+
+#endif
+
 namespace KurotoriTools
 {
     using BonePathList = Dictionary<string, Transform>;
@@ -62,6 +69,28 @@ namespace KurotoriTools
             {
                 return new DynamicBoneColliderRemapper(component, target,partsPathInfo);
             }
+
+#if VRC_SDK_VRCSDK3
+            if(type == typeof(VRCPhysBone))
+            {
+                return new PhysBoneRemapper(component, target, partsPathInfo);
+            }
+
+            if(type == typeof(VRCPhysBoneCollider))
+            {
+                return new PhysBoneColliderRemapper(component, target, partsPathInfo);
+            }
+
+            if(type == typeof(VRCContactReceiver))
+            {
+                return new ContactReceiverRemapper(component, target, partsPathInfo);
+            }
+
+            if(type == typeof(VRCContactSender))
+            {
+                return new ContactSenderRemapper(component, target, partsPathInfo);
+            }
+#endif
 
             return null;
         }
@@ -227,7 +256,7 @@ namespace KurotoriTools
             KurotoriUtility.CopyFieldValue("m_UpdateRate",          component, assembledComponent, dynamicBoneType);
         }
     }
-
+    
     public class DynamicBoneColliderRemapper : IComponentRemapper
     {
         private Component component;
@@ -263,6 +292,385 @@ namespace KurotoriTools
             }
         }
     }
+
+#if VRC_SDK_VRCSDK3
+    public class PhysBoneRemapper : IComponentRemapper
+    {
+        private VRCPhysBone component;
+        private GameObject target;
+        private BonePathInfo partsPathInfo;
+
+        public PhysBoneRemapper(Component component, GameObject target, BonePathInfo partsPathInfo)
+        {
+            this.component = component as VRCPhysBone;
+            this.target = target;
+            this.partsPathInfo = partsPathInfo;
+        }
+
+        public void Remap(BonePathInfo assembledPathInfo)
+        {
+            VRCPhysBone assembledComponent = target.AddComponent<VRCPhysBone>();
+
+            // ルートボーンのマッピング
+            {
+                Transform root = component.rootTransform;
+                if (root != null)
+                {
+                    var rootBonePath = KurotoriUtility.GetBonePath(partsPathInfo.rootBone, root);
+                    if (string.IsNullOrEmpty(rootBonePath))
+                    {
+                        KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBone:{0}のRoot:{1}はベースアバター内に存在しません。", component.gameObject.name, root.name));
+                    }
+                    else
+                    {
+                        Transform newRoot;
+                        if (assembledPathInfo.pathList.TryGetValue(rootBonePath, out newRoot))
+                        {
+                            assembledComponent.rootTransform = newRoot;
+                        }
+                        else
+                        {
+                            KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBone:{0}のRoot:{1}が結合後のアバターに存在しませんでした。", component.gameObject.name, rootBonePath));
+                        }
+                    }
+                }
+                else
+                {
+                    KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBone:{0}のRootがnullです。", component.gameObject.name));
+                }
+            }
+
+            // 無視オブジェクトのマッピング
+            {
+                List<Transform> newIgnoreTransformList = new List<Transform>();
+
+                foreach (var ignoreTransform in component.ignoreTransforms)
+                {
+                    if (ignoreTransform == null)
+                    {
+                        KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBone:{0}のIgnoreTransformにnullのものが存在します。", component.gameObject.name));
+                    }
+                    else
+                    {
+                        var bonePath = KurotoriUtility.GetBonePath(partsPathInfo.rootBone, ignoreTransform);
+                        if (string.IsNullOrEmpty(bonePath))
+                        {
+                            KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBone:{0}のIgnoreTransform:{1}はベースアバター内に存在しません。", component.gameObject.name, ignoreTransform.name));
+                        }
+                        else
+                        {
+                            Transform newTransform;
+                            if (assembledPathInfo.pathList.TryGetValue(bonePath, out newTransform))
+                            {
+                                newIgnoreTransformList.Add(newTransform);
+                            }
+                            else
+                            {
+                                KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBone:{0}のIgnoreTransform:{1}が結合後のアバターに存在しませんでした。", component.gameObject.name, bonePath));
+                            }
+                        }
+                    }
+                }
+
+                assembledComponent.ignoreTransforms = newIgnoreTransformList;
+            }
+
+            // コライダーのマッピング
+            {
+                List<VRC.Dynamics.VRCPhysBoneColliderBase> newColliderList = new List<VRC.Dynamics.VRCPhysBoneColliderBase>();
+
+                foreach (var collider in component.colliders)
+                {
+                    if (collider == null)
+                    {
+                        KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBone:{0}のCollidersにnullのものが存在します。", component.gameObject.name));
+                    }
+                    else
+                    {
+                        var colliderTransform = collider.transform;
+                        var bonePath = KurotoriUtility.GetBonePath(partsPathInfo.rootBone, colliderTransform);
+                        if (string.IsNullOrEmpty(bonePath))
+                        {
+                            KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBone:{0}のColliders:{1}はベースアバター内に存在しません。", component.gameObject.name, colliderTransform.name));
+                        }
+                        else
+                        {
+                            Transform newTransform;
+                            if (assembledPathInfo.pathList.TryGetValue(bonePath, out newTransform))
+                            {
+                                var newPhysColliders = newTransform.gameObject.GetComponents<VRCPhysBoneCollider>();
+                                if (newPhysColliders == null)
+                                {
+                                    KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBone:{0}のColliders:{1}にPhysBoneColliderコンポーネントが存在しませんでした。", component.gameObject.name, bonePath));
+                                }
+                                else if (newPhysColliders.Length > 1)
+                                {
+                                    KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBone:{0}のColliders:{1}にPhysBoneColliderコンポーネントが2つ以上存在します。このツールでは同一オブジェクトに同じ種類の複数コンポーネントは対応していません。", component.gameObject.name, bonePath));
+                                }
+                                else
+                                {
+                                    newColliderList.Add(newPhysColliders[0]);
+                                }
+                            }
+                            else
+                            {
+                                KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBone:{0}のColliders:{1}が結合後のアバターに存在しませんでした。", component.gameObject.name, bonePath));
+                            }
+                        }
+                    }
+                }
+                assembledComponent.colliders = newColliderList;
+            }
+
+            assembledComponent.endpointPosition = component.endpointPosition;
+
+            assembledComponent.multiChildType = component.multiChildType;
+
+            assembledComponent.integrationType = component.integrationType;
+
+
+            assembledComponent.pull = component.pull;
+            assembledComponent.pullCurve = KurotoriUtility.CopyAnimationCurve(component.pullCurve);
+            
+            assembledComponent.spring = component.spring;
+            assembledComponent.springCurve = KurotoriUtility.CopyAnimationCurve(component.springCurve);
+
+            assembledComponent.stiffness = component.stiffness;
+            assembledComponent.stiffnessCurve = KurotoriUtility.CopyAnimationCurve(component.stiffnessCurve);
+
+            assembledComponent.immobile = component.immobile;
+            assembledComponent.immobileCurve = KurotoriUtility.CopyAnimationCurve(component.immobileCurve);
+            
+            assembledComponent.radius = component.radius;
+            assembledComponent.radiusCurve = KurotoriUtility.CopyAnimationCurve(component.radiusCurve);
+
+            assembledComponent.gravity = component.gravity;
+            assembledComponent.gravityCurve = KurotoriUtility.CopyAnimationCurve(component.gravityCurve);
+
+            assembledComponent.gravityFalloff = component.gravityFalloff;
+            assembledComponent.gravityFalloffCurve = KurotoriUtility.CopyAnimationCurve(component.gravityFalloffCurve);
+
+            assembledComponent.maxAngleX = component.maxAngleX;
+            assembledComponent.maxAngleZ = component.maxAngleZ;
+            assembledComponent.maxAngleXCurve = KurotoriUtility.CopyAnimationCurve(component.maxAngleXCurve);
+            assembledComponent.maxAngleZCurve = KurotoriUtility.CopyAnimationCurve(component.maxAngleZCurve);
+            assembledComponent.limitRotation = component.limitRotation;
+            assembledComponent.limitRotationXCurve = KurotoriUtility.CopyAnimationCurve(component.limitRotationXCurve);
+            assembledComponent.limitRotationYCurve = KurotoriUtility.CopyAnimationCurve(component.limitRotationYCurve);
+            assembledComponent.limitRotationZCurve = KurotoriUtility.CopyAnimationCurve(component.limitRotationZCurve);
+
+            assembledComponent.limitType = component.limitType;
+
+            assembledComponent.allowCollision = component.allowCollision;
+
+
+            assembledComponent.staticFreezeAxis = component.staticFreezeAxis;
+
+
+            assembledComponent.allowGrabbing = component.allowGrabbing;
+            assembledComponent.allowPosing = component.allowPosing;
+            assembledComponent.grabMovement = component.grabMovement;
+            assembledComponent.maxStretch = component.maxStretch;
+            assembledComponent.maxStretchCurve = KurotoriUtility.CopyAnimationCurve(component.maxStretchCurve);
+            assembledComponent.parameter = component.parameter;
+            assembledComponent.isAnimated = component.isAnimated;
+
+            assembledComponent.showGizmos = component.showGizmos;
+            assembledComponent.boneOpacity = component.boneOpacity;
+            assembledComponent.limitOpacity = component.limitOpacity;
+        }
+    }
+
+    public class PhysBoneColliderRemapper :IComponentRemapper
+    {
+        private VRCPhysBoneCollider component;
+        private GameObject target;
+        private BonePathInfo partsPathInfo;
+
+        public PhysBoneColliderRemapper(Component component, GameObject target, BonePathInfo partsPathInfo)
+        {
+            this.component = component as VRCPhysBoneCollider;
+            this.target = target;
+            this.partsPathInfo = partsPathInfo;
+        }
+
+        public void Remap(BonePathInfo assembledPathInfo)
+        {
+            var assembledComponent = target.AddComponent<VRCPhysBoneCollider>();
+
+            // ルートボーンのマッピング
+            {
+                Transform root = component.rootTransform;
+                if (root != null)
+                {
+                    var rootBonePath = KurotoriUtility.GetBonePath(partsPathInfo.rootBone, root);
+                    if (string.IsNullOrEmpty(rootBonePath))
+                    {
+                        KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBoneCollider:{0}のRoot:{1}はベースアバター内に存在しません。", component.gameObject.name, root.name));
+                    }
+                    else
+                    {
+                        Transform newRoot;
+                        if (assembledPathInfo.pathList.TryGetValue(rootBonePath, out newRoot))
+                        {
+                            assembledComponent.rootTransform = newRoot;
+                        }
+                        else
+                        {
+                            KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBoneCollider:{0}のRoot:{1}が結合後のアバターに存在しませんでした。", component.gameObject.name, rootBonePath));
+                        }
+                    }
+                }
+                else
+                {
+                    KurotoriUtility.OutputLog(LogType.WARNING, string.Format("PhysBoneCollider:{0}のRootがnullです。", component.gameObject.name));
+                }
+            }
+
+            assembledComponent.shapeType = component.shapeType;
+            assembledComponent.radius = component.radius;
+            assembledComponent.height = component.height;
+            assembledComponent.rotation = component.rotation;
+            assembledComponent.position = component.position;
+            assembledComponent.insideBounds = component.insideBounds;
+        }
+    }
+
+    public class ContactSenderRemapper : IComponentRemapper
+    {
+        private VRCContactSender component;
+        private GameObject target;
+        private BonePathInfo partsPathInfo;
+
+        public ContactSenderRemapper(Component component, GameObject target, BonePathInfo partsPathInfo)
+        {
+            this.component = component as VRCContactSender;
+            this.target = target;
+            this.partsPathInfo = partsPathInfo;
+        }
+
+        public void Remap(BonePathInfo assembledPathInfo)
+        {
+            var assembledComponent = target.AddComponent<VRCContactSender>();
+
+            // ルートボーンのマッピング
+            {
+                Transform root = component.rootTransform;
+                if (root != null)
+                {
+                    var rootBonePath = KurotoriUtility.GetBonePath(partsPathInfo.rootBone, root);
+                    if (string.IsNullOrEmpty(rootBonePath))
+                    {
+                        KurotoriUtility.OutputLog(LogType.WARNING, string.Format("VRCContactSender:{0}のRoot:{1}はベースアバター内に存在しません。", component.gameObject.name, root.name));
+                    }
+                    else
+                    {
+                        Transform newRoot;
+                        if (assembledPathInfo.pathList.TryGetValue(rootBonePath, out newRoot))
+                        {
+                            assembledComponent.rootTransform = newRoot;
+                        }
+                        else
+                        {
+                            KurotoriUtility.OutputLog(LogType.WARNING, string.Format("VRCContactSender:{0}のRoot:{1}が結合後のアバターに存在しませんでした。", component.gameObject.name, rootBonePath));
+                        }
+                    }
+                }
+                else
+                {
+                    KurotoriUtility.OutputLog(LogType.WARNING, string.Format("VRCContactSender:{0}のRootがnullです。", component.gameObject.name));
+                }
+            }
+
+            assembledComponent.shapeType = component.shapeType;
+            assembledComponent.radius = component.radius;
+            assembledComponent.height = component.height;
+            assembledComponent.position = component.position;
+            assembledComponent.rotation = component.rotation;
+
+            List<string> newTags = new List<string>();
+
+            foreach(var tag in component.collisionTags)
+            {
+                newTags.Add(tag);
+            }
+
+            assembledComponent.collisionTags = newTags;
+        }
+    }
+
+    public class ContactReceiverRemapper : IComponentRemapper
+    {
+        private VRCContactReceiver component;
+        private GameObject target;
+        private BonePathInfo partsPathInfo;
+
+        public ContactReceiverRemapper(Component component, GameObject target, BonePathInfo partsPathInfo)
+        {
+            this.component = component as VRCContactReceiver;
+            this.target = target;
+            this.partsPathInfo = partsPathInfo;
+        }
+
+        public void Remap(BonePathInfo assembledPathInfo)
+        {
+            var assembledComponent = target.AddComponent<VRCContactReceiver>();
+
+            // ルートボーンのマッピング
+            {
+                Transform root = component.rootTransform;
+                if (root != null)
+                {
+                    var rootBonePath = KurotoriUtility.GetBonePath(partsPathInfo.rootBone, root);
+                    if (string.IsNullOrEmpty(rootBonePath))
+                    {
+                        KurotoriUtility.OutputLog(LogType.WARNING, string.Format("VRCContactReceiver:{0}のRoot:{1}はベースアバター内に存在しません。", component.gameObject.name, root.name));
+                    }
+                    else
+                    {
+                        Transform newRoot;
+                        if (assembledPathInfo.pathList.TryGetValue(rootBonePath, out newRoot))
+                        {
+                            assembledComponent.rootTransform = newRoot;
+                        }
+                        else
+                        {
+                            KurotoriUtility.OutputLog(LogType.WARNING, string.Format("VRCContactReceiver:{0}のRoot:{1}が結合後のアバターに存在しませんでした。", component.gameObject.name, rootBonePath));
+                        }
+                    }
+                }
+                else
+                {
+                    KurotoriUtility.OutputLog(LogType.WARNING, string.Format("VRCContactReceiver:{0}のRootがnullです。", component.gameObject.name));
+                }
+            }
+
+            assembledComponent.shapeType = component.shapeType;
+            assembledComponent.radius = component.radius;
+            assembledComponent.height = component.height;
+            assembledComponent.position = component.position;
+            assembledComponent.rotation = component.rotation;
+
+            assembledComponent.allowSelf = component.allowSelf;
+            assembledComponent.allowOthers = component.allowOthers;
+            assembledComponent.localOnly = component.localOnly;
+            
+            List<string> newTags = new List<string>();
+
+            foreach (var tag in component.collisionTags)
+            {
+                newTags.Add(tag);
+            }
+
+            assembledComponent.collisionTags = newTags;
+
+            assembledComponent.receiverType = component.receiverType;
+            assembledComponent.parameter = component.parameter;
+            assembledComponent.minVelocity = component.minVelocity;
+
+        }
+    }
+#endif
 
     public class AimConstraintReMapper : IComponentRemapper
     {

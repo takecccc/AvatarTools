@@ -353,6 +353,13 @@ namespace KurotoriTools
                         //DynamicBoneColliderのみ先にマッピングを行うようにする（参照切れ防止）
                         preRemapperList.Add(remapper);
                     }
+#if VRC_SDK_VRCSDK3
+                    else if (remapper.GetType() == typeof(PhysBoneColliderRemapper))
+                    {
+                        //PhysBoneColliderのみ先にマッピングを行うようにする（参照切れ防止）
+                        preRemapperList.Add(remapper);
+                    }
+#endif
                     else
                     {
                         remapperList.Add(remapper);
@@ -384,6 +391,12 @@ namespace KurotoriTools
                 type == typeof(CapsuleCollider) ||
                 type == typeof(MeshCollider) ||
                 type == typeof(Transform) ||
+#if VRC_SDK_VRCSDK3
+                type == typeof(VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBone) ||
+                type == typeof(VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider) ||
+                type == typeof(VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver) ||
+                type == typeof(VRC.SDK3.Dynamics.Contact.Components.VRCContactSender) ||
+#endif
                 type.Name.Equals("DynamicBone") ||
                 type.Name.Equals("DynamicBoneCollider");
 
@@ -408,6 +421,12 @@ namespace KurotoriTools
                     type == typeof(PositionConstraintRemapper) ||
                     type == typeof(RotationConstraintRemapper) ||
                     type == typeof(ScaleConstraintRemapper) ||
+#if VRC_SDK_VRCSDK3
+                    type == typeof(VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBone) ||
+                    type == typeof(VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider) ||
+                    type == typeof(VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver) ||
+                    type == typeof(VRC.SDK3.Dynamics.Contact.Components.VRCContactSender) ||
+#endif
                     type.Name.Equals("DynamicBone") ||
                     type.Name.Equals("DynamicBoneColliderBase")
                     )
