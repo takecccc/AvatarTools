@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.Animations;
+using UnityEditor;
 
 namespace KurotoriTools
 {
@@ -327,7 +328,9 @@ namespace KurotoriTools
 
             KurotoriUtility.OutputLog(LogType.LOG, "モデル結合開始");
 
-            GameObject assembledAvatar = Object.Instantiate(baseAvatar, SPAWN_POINT, Quaternion.identity);
+            // GameObject assembledAvatar = Object.Instantiate(baseAvatar, SPAWN_POINT, Quaternion.identity);
+            GameObject assembledAvatar = DuplicateObject(baseAvatar);
+            assembledAvatar.transform.SetPositionAndRotation(SPAWN_POINT, Quaternion.identity);
             assembledAvatar.name = name;
 
             KurotoriUtility.OutputLog(LogType.LOG, "モデルを複製");
@@ -742,5 +745,14 @@ namespace KurotoriTools
             return !(KurotoriUtility.CreateBonePathList(srcObject, out bonePathList));
         }
 
+        private GameObject DuplicateObject(GameObject o)
+        {
+            var prevSelection = Selection.objects;
+            Selection.activeGameObject = o;
+            Unsupported.DuplicateGameObjectsUsingPasteboard();
+            var duplicatedObject = Selection.activeGameObject;
+            Selection.objects = prevSelection;
+            return duplicatedObject;
+        }
     }
 }
