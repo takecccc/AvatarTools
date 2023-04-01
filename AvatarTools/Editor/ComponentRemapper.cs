@@ -438,6 +438,7 @@ namespace KurotoriTools
             assembledComponent.stiffness = component.stiffness;
             assembledComponent.stiffnessCurve = KurotoriUtility.CopyAnimationCurve(component.stiffnessCurve);
 
+            assembledComponent.immobileType = component.immobileType;
             assembledComponent.immobile = component.immobile;
             assembledComponent.immobileCurve = KurotoriUtility.CopyAnimationCurve(component.immobileCurve);
             
